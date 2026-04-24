@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Territory War - Factions</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        /* --- Base & Reset --- */
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Segoe UI', Roboto, sans-serif; background-color: #111; color: #eee; overflow: hidden; }
+        #map { 
+            width: 100%; 
+            height: 100%; 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            z-index: 1; 
+        }
+
+        .hidden { display: none !important; }
+
+        /* Bouton Debug Flottant */
+        #debug-btn {
+            position: absolute;
+            top: 110px;
+            right: 20px;
+            z-index: 1500;
+            width: 45px; 
+            height: 45px; 
+            border-radius: 50%;
+            background: rgba(44, 62, 80, 0.9);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            transition: all 0.2s;
+            padding: 0;
+        }
+
+        #debug-btn:active { 
+            transform: scale(0.9); 
+            background: #34495e; 
+        }
+
+        /* --- Écrans (Login) --- */
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,15,15,0.95); z-index: 2000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px); }
+        h1 { color: #fff; font-size: 3rem; margin: 0 0 20px 0; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        input[type="text"], select { padding: 15px; margin: 10px 0; border-radius: 10px; border: none; font-size: 1.2rem; width: 80%; max-width: 300px; text-align: center; background: #fff; color: #333;}
+        select { cursor: pointer; }
+        button { background: #3498db; color: white; border: none; padding: 15px 30px; font-size: 1.2rem; font-weight: bold; text-transform: uppercase; cursor: pointer; border-radius: 50px; margin-top: 15px; width: 80%; max-width: 300px; box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4); transition: 0.2s; }
+        button:active { transform: scale(0.95); }
+        button:disabled { background: #555; box-shadow: none; cursor: not-allowed; }
+        .error { color: #e74c3c; margin-top: 10px; }
+
+        /* --- HUD --- */
+        #hud { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; }
+        .panel { background: rgba(0, 0, 0, 0.85); padding: 15px; border-radius: 15px; pointer-events: auto; backdrop-filter: blur(10px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #333; }
+        
+        .top-bar { display: flex; justify-content: space-between; align-items: flex-start; }
+        #player-info { display: flex; flex-direction: column; gap: 5px; }
+        #coins-display { color: #f1c40f; font-size: 1.5rem; font-weight: bold; }
+        #zone-count-display { color: #2ecc71; font-size: 1.1rem; }
+        #faction-display { font-size: 0.9rem; font-weight: bold; text-transform: uppercase; margin-top: 2px;}
+
+        #leaderboard { text-align: right; min-width: 150px; }
+        #leaderboard h3 { margin: 0 0 10px 0; font-size: 1rem; color: #aaa; text-transform: uppercase; }
+        .lb-entry { font-size: 0.9rem; margin-bottom: 5px; display: flex; justify-content: space-between; gap: 15px;}
+        .lb-color { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; }
+
+        /* --- Info de la zone actuelle --- */
+        #zone-panel { align-self: center; width: 100%; max-width: 400px; text-align: center; margin-bottom: 10px; }
+        #zone-status { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+        #capture-bar-bg { width: 100%; height: 20px; background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px; position: relative; }
+        #capture-bar-fill { height: 100%; width: 0%; background: #3498db; transition: width 1s linear; }
+        #capture-text { position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 0.8rem; line-height: 20px; color: white; text-shadow: 1px 1px 2px black; }
+        
+        .grid-rect { pointer-events: none; }
+    
+        .action-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .action-buttons button { margin: 5px 0; padding: 10px 15px; font-size: 0.9rem; width: auto; }
+        .btn-upgrade { background: #9b59b6; box-shadow: 0 5px 15px rgba(155, 89, 182, 0.4); }
+
+        /* --- Map Markers --- */
+        .player-marker { background-color: #fff; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 0 10px #fff; }
+        .custom-div-icon { background: none; border: none; }
+        
+        .leaflet-marker-pane { z-index: 600 !important; }
+        .leaflet-tooltip-pane { z-index: 650 !important; }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen" class="screen">
+        <h1>Territory War</h1>
+        <p>Choisis ton pseudo et ta faction.</p>
+        <input type="text" id="username-input" placeholder="Pseudo (Ex: Shadow99)" maxlength="15">
+        <select id="faction-input">
+            <option value="water">Faction Eau (Bleu)</option>
+            <option value="fire">Faction Feu (Rouge)</option>
+            <option value="wind">Faction Vent (Blanc)</option>
+            <option value="earth">Faction Terre (Marron)</option>
+        </select>
+        <button id="join-btn">REJOINDRE LA GUERRE</button>
+        <p id="login-error" class="error hidden"></p>
+    </div>
+
+    <div id="hud" class="hidden">
+        <div class="top-bar">
+            <div id="player-info" class="panel">
+                <div id="coins-display">💰 0</div>
+                <div id="zone-count-display">🚩 0 territoires</div>
+                <div id="faction-display">Faction</div>
+            </div>
+            
+            <div id="leaderboard" class="panel">
+                <h3>Top Conquérants</h3>
+                <div id="lb-content">Chargement...</div>
+            </div>
+        </div>
+
+        <div id="zone-panel" class="panel">
+            <div id="zone-status">Zone Libre</div>
+            <div style="font-size: 0.8rem; color:#aaa; margin-bottom:10px;" id="zone-coords">Position: --</div>
+            
+            <div id="capture-bar-bg">
+                <div id="capture-bar-fill"></div>
+                <div id="capture-text">En attente...</div>
+            </div>
+
+            <div id="zone-actions" class="action-buttons hidden">
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script type="module">
+    
+    const manifest = {
+        "name": "Faction Wars", "short_name": "Faction Wars", "start_url": window.location.href,
+        "display": "standalone", "background_color": "#000000", "theme_color": "#0088cc",
+        "icons": [{"src": "https://cdn-icons-png.flaticon.com/512/7963/7963813.png", "sizes": "192x192", "type": "image/png"}]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+    const link = document.createElement('link'); link.rel = 'manifest'; link.href = URL.createObjectURL(blob);
+    document.head.appendChild(link);
+
+    
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+        import { getDatabase, ref, set, get, update, onValue } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBqRloMg22mDsnfqhNK77vREQYtLFBgyf0",
+            authDomain: "territory-war-acfca.firebaseapp.com",
+            databaseURL: "https://territory-war-acfca-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "territory-war-acfca",
+            storageBucket: "territory-war-acfca.firebasestorage.app",
+            messagingSenderId: "399616663350",
+            appId: "1:399616663350:web:b69d53d353181cbe679d97",
+            measurementId: "G-5MSDF4XKQJ"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // --- Configuration des factions ---
+        const FACTION_COLORS = {
+            water: '#3498db',
+            fire: '#e74c3c',
+            wind: '#ecf0f1',
+            earth: '#8d6e63'
+        };
+        const FACTION_NAMES = {
+            water: 'Eau',
+            fire: 'Feu',
+            wind: 'Vent',
+            earth: 'Terre'
+        };
+
+        // --- Variables Globales ---
+        let map, playerMarker;
+        let playerPos = { lat: 48.8566, lng: 2.3522 };
+        let watchId = null;
+        let myUser = { uid: null, username: '', faction: '', coins: 0, totalCaptured: 0, zonesCount: 0 };
+        let allUsers = {};
+        let allZones = {};
+        let zoneRectangles = {};
+        let otherPlayersMarkers = {}; 
+    
+        const GRID_STEP_LAT = 0.0009;
+        const GRID_STEP_LNG = 0.0013;
+
+        let selectedZoneId = null; 
+        let currentZoneId = null;
+        let captureTimer = 0;
+        let captureInterval = null;
+        const TIME_FREE = 120;
+        const TIME_STEAL = 600;
+
+        // --- Initialisation ---
+        window.onload = () => {
+            const savedUid = localStorage.getItem('tw_uid_factions');
+            if (savedUid) {
+                get(ref(db, `UsersF/${savedUid}`)).then((snapshot) => {
+                    if (snapshot.exists()) {
+                        myUser = { uid: savedUid, ...snapshot.val() };
+                        startGame();
+                    } else {
+                        document.getElementById('login-screen').classList.remove('hidden');
+                    }
+                });
+            } else {
+                document.getElementById('login-screen').classList.remove('hidden');
+            }
+        };
+
+        // --- Logique d'Authentification ---
+        document.getElementById('join-btn').addEventListener('click', async () => {
+            const username = document.getElementById('username-input').value.trim();
+            const faction = document.getElementById('faction-input').value;
+            const errorTxt = document.getElementById('login-error');
+            
+            if (username.length < 3) {
+                errorTxt.innerText = "Le pseudo doit faire au moins 3 caractères.";
+                errorTxt.classList.remove('hidden');
+                return;
+            }
+
+            const uid = 'usr_' + Date.now() + Math.floor(Math.random()*1000);
+            const newUser = {
+                username: username,
+                faction: faction,
+                coins: 0,
+                totalCaptured: 0,
+                zonesCount: 0,
+                lastSeen: Date.now()
+            };
+
+            await set(ref(db, `UsersF/${uid}`), newUser);
+            localStorage.setItem('tw_uid_factions', uid);
+            myUser = { uid, ...newUser };
+            
+            document.getElementById('login-screen').classList.add('hidden');
+            startGame();
+        });
+
+        // --- Lancement du jeu ---
+        function startGame() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+
+            // Setup faction color in HUD
+            const fColor = FACTION_COLORS[myUser.faction];
+            document.getElementById('faction-display').innerText = `Faction ${FACTION_NAMES[myUser.faction]}`;
+            document.getElementById('faction-display').style.color = fColor;
+
+            initMap();
+            listenToDatabase();
+            startGPS();
+            updateHUD();
+        }
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false, interactive: true }).setView([playerPos.lat, playerPos.lng], 17);
+            const tileUrl = 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png';
+
+            L.tileLayer(tileUrl, {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19
+            }).addTo(map);
+
+            const fColor = FACTION_COLORS[myUser.faction];
+            const icon = L.divIcon({ className: 'custom-div-icon', html: `<div class='player-marker' style='border-color: ${fColor}'></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
+            playerMarker = L.marker([playerPos.lat, playerPos.lng], {icon: icon}).addTo(map);
+                
+            map.on('click', () => {
+                selectedZoneId = null;
+                checkCurrentZoneContext();
+            });
+        }
+
+        // --- Écoutes Firebase ---
+        function listenToDatabase() {
+            onValue(ref(db, `UsersF/${myUser.uid}`), (snapshot) => {
+                if(snapshot.exists()) {
+                    myUser = { uid: myUser.uid, ...snapshot.val() };
+                    updateHUD();
+                }
+            });
+
+            onValue(ref(db, 'UsersF'), (snapshot) => {
+                if(snapshot.exists()) {
+                    allUsers = snapshot.val();
+                    updateLeaderboard();
+                    updateZoneColors();
+
+                    Object.keys(allUsers).forEach(uid => {
+                        if (uid === myUser.uid) return;
+
+                        const user = allUsers[uid];
+                        if (user.lat && user.lng && (Date.now() - user.lastSeen < 300000)) {
+                            const dist = getDistance(playerPos.lat, playerPos.lng, user.lat, user.lng);
+                            
+                            if (dist <= 10) {
+                                if (!otherPlayersMarkers[uid]) {
+                                    const otherColor = FACTION_COLORS[user.faction] || '#fff';
+                                    const otherIcon = L.divIcon({ 
+                                        className: 'custom-div-icon', 
+                                        html: `<div class='player-marker' style='border-color: ${otherColor}; background-color: rgba(255,255,255,0.7)'></div>`, 
+                                        iconSize: [12, 12], 
+                                        iconAnchor: [6, 6] 
+                                    });
+                                    otherPlayersMarkers[uid] = L.marker([user.lat, user.lng], {icon: otherIcon})
+                                        .addTo(map)
+                                        .bindTooltip(user.username, {permanent: false, direction: 'top'});
+                                } else {
+                                    otherPlayersMarkers[uid].setLatLng([user.lat, user.lng]);
+                                }
+                            } else {
+                                if (otherPlayersMarkers[uid]) {
+                                    map.removeLayer(otherPlayersMarkers[uid]);
+                                    delete otherPlayersMarkers[uid];
+                                }
+                            }
+                        } else {
+                            if (otherPlayersMarkers[uid]) {
+                                map.removeLayer(otherPlayersMarkers[uid]);
+                                delete otherPlayersMarkers[uid];
+                            }
+                        }
+                    });
+                }
+            });
+
+            onValue(ref(db, 'ZonesF'), (snapshot) => {
+                const data = snapshot.val() || {};
+                allZones = data;
+                renderZonesMap();
+                checkCurrentZoneContext();
+            });
+        }
+
+        // --- Logique GPS et Grille ---
+        function startGPS() {
+            if (!navigator.geolocation) return alert("GPS non supporté.");
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    playerPos = { lat, lng };
+                    playerMarker.setLatLng([lat, lng]);
+
+                    if (myUser.uid) {
+                        update(ref(db, `UsersF/${myUser.uid}`), {
+                            lat: lat,
+                            lng: lng,
+                            lastSeen: Date.now()
+                        });
+                    }
+
+                    const newZoneId = getZoneIdFromLatLng(lat, lng);
+                    if (newZoneId !== currentZoneId) {
+                        changeZone(newZoneId);
+                    }
+                },
+                (err) => console.error(err),
+                { enableHighAccuracy: true, maximumAge: 0 }
+            );
+        }
+
+        function getZoneIdFromLatLng(lat, lng) {
+            const latIdx = Math.floor(lat / GRID_STEP_LAT);
+            const lngIdx = Math.floor(lng / GRID_STEP_LNG);
+            return `${latIdx}_${lngIdx}`;
+        }
+
+        function getBoundsFromZoneId(zoneId) {
+            const parts = zoneId.split('_');
+            const latIdx = parseInt(parts[0]);
+            const lngIdx = parseInt(parts[1]);
+            return [
+                [latIdx * GRID_STEP_LAT, lngIdx * GRID_STEP_LNG],
+                [(latIdx + 1) * GRID_STEP_LAT, (lngIdx + 1) * GRID_STEP_LNG]
+            ];
+        }
+
+        function renderZonesMap() {
+            Object.values(zoneRectangles).forEach(rect => map.removeLayer(rect));
+            zoneRectangles = {};
+
+            if (!playerPos) return;
+
+            const pLatIdx = Math.floor(playerPos.lat / GRID_STEP_LAT);
+            const pLngIdx = Math.floor(playerPos.lng / GRID_STEP_LNG);
+            const range = 20; 
+
+            for (let i = -range; i <= range; i++) {
+                for (let j = -range; j <= range; j++) {
+                    const zId = `${pLatIdx + i}_${pLngIdx + j}`;
+                    const bounds = getBoundsFromZoneId(zId);
+                    const zone = allZones[zId];
+
+                    let style = {
+                        color: '#aaa',
+                        weight: 1,
+                        fillOpacity: 0.05,
+                        interactive: true
+                    };
+
+                    if (zone) {
+                        style.color = FACTION_COLORS[zone.faction] || '#555';
+                        style.weight = zone.level ? zone.level * 2 : 2;
+                        style.fillOpacity = 0.3;
+                    }
+
+                    const rect = L.rectangle(bounds, style).addTo(map);
+                    zoneRectangles[zId] = rect;
+
+                    rect.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        selectZone(zId);
+                    });
+                }
+            }
+        }
+
+        // --- Logique de Zone & Capture ---
+        function changeZone(newZoneId) {
+            currentZoneId = newZoneId;
+            captureTimer = 0;
+            document.getElementById('zone-coords').innerText = `ID: ${newZoneId}`;
+            
+            if (captureInterval) clearInterval(captureInterval);
+            captureInterval = setInterval(captureTick, 1000);
+            
+            checkCurrentZoneContext();
+        }
+
+        function checkCurrentZoneContext() {
+            if (!currentZoneId) return;
+            if (!selectedZoneId || selectedZoneId === currentZoneId) {
+                selectZone(currentZoneId);
+            } else {
+                selectZone(selectedZoneId);
+            }
+        }
+
+                function captureTick() {
+            const zone = allZones[currentZoneId];
+            const isMyFaction = zone && zone.faction === myUser.faction;
+            
+            if (isMyFaction) {
+                document.getElementById('capture-bar-fill').style.width = '100%';
+                document.getElementById('capture-bar-fill').style.backgroundColor = '#2ecc71';
+                document.getElementById('capture-text').innerText = "Territoire sécurisé";
+                return;
+            }
+
+            // --- PARTIE MODIFIÉE : Multiplication par le niveau ---
+            const level = (zone && zone.level) ? zone.level : 1;
+            const targetTime = zone ? (TIME_STEAL * level) : TIME_FREE;
+            // ------------------------------------------------------
+            
+            // Compter les alliés actifs dans la même zone
+            let activeAllies = [];
+            const now = Date.now();
+            Object.values(allUsers).forEach(u => {
+                if (u.faction === myUser.faction && u.lat && u.lng && (now - u.lastSeen < 300000)) {
+                    if (getZoneIdFromLatLng(u.lat, u.lng) === currentZoneId) {
+                        activeAllies.push(u.uid);
+                    }
+                }
+            });
+            // Sécurité : toujours s'inclure soi-même au minimum
+            if (!activeAllies.includes(myUser.uid)) activeAllies.push(myUser.uid);
+
+            const speedMultiplier = activeAllies.length;
+            captureTimer += speedMultiplier;
+
+            let percent = Math.min(100, (captureTimer / targetTime) * 100);
+            document.getElementById('capture-bar-fill').style.width = `${percent}%`;
+            document.getElementById('capture-bar-fill').style.backgroundColor = zone ? '#e74c3c' : '#3498db';
+            
+            let timeLeft = Math.max(0, Math.ceil((targetTime - captureTimer) / speedMultiplier));
+            document.getElementById('capture-text').innerText = `Capture : ${timeLeft}s (${speedMultiplier}x)`;
+
+            if (captureTimer >= targetTime) {
+                clearInterval(captureInterval);
+                
+                // Pour éviter que 3 joueurs lancent la capture en DB et triplent l'or, seul le premier ID déclenche.
+                activeAllies.sort();
+                if (activeAllies[0] === myUser.uid) {
+                    captureZone(currentZoneId, zone, activeAllies);
+                } else {
+                    document.getElementById('capture-text').innerText = "Attente synchronisation...";
+                }
+            }
+        }
+
+        async function captureZone(zoneId, existingZone, activeAllies) {
+            document.getElementById('capture-text').innerText = "CAPTURE RÉUSSIE !";
+            const updates = {};
+            
+            // 1. Retirer la zone aux anciens proprios si elle existait
+            if (existingZone && existingZone.owners) {
+                Object.keys(existingZone.owners).forEach(oldOwnerUid => {
+                    const currentCount = allUsers[oldOwnerUid]?.zonesCount || 0;
+                    updates[`UsersF/${oldOwnerUid}/zonesCount`] = Math.max(0, currentCount - 1);
+                });
+            }
+
+            // 2. Mettre à jour les stats des nouveaux copropriétaires
+            const ownersObj = {};
+            activeAllies.forEach(uid => {
+                ownersObj[uid] = true;
+                const u = allUsers[uid];
+                if (u) {
+                    updates[`UsersF/${uid}/zonesCount`] = (u.zonesCount || 0) + 1;
+                    updates[`UsersF/${uid}/totalCaptured`] = (u.totalCaptured || 0) + 1;
+                }
+            });
+
+            // 3. Distribuer +2 Or à TOUTE la faction
+            Object.keys(allUsers).forEach(uid => {
+                if (allUsers[uid].faction === myUser.faction) {
+                    // Si l'utilisateur a déjà une MAJ prévue (pour les zonesCount), on part de sa base, sinon direct.
+                    const currentCoins = allUsers[uid].coins || 0;
+                    updates[`UsersF/${uid}/coins`] = currentCoins + 2;
+                }
+            });
+
+            // 4. Mettre à jour la zone
+            updates[`ZonesF/${zoneId}`] = {
+                faction: myUser.faction,
+                level: existingZone ? existingZone.level : 1,
+                owners: ownersObj
+            };
+
+            await update(ref(db), updates);
+            captureTimer = 0;
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; 
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // --- Actions sur la zone ---
+        function getUpgradeCost(currentLevel) {
+            if (currentLevel === 1) return 50;
+            if (currentLevel === 2) return 75;
+            if (currentLevel === 3) return 100;
+            return null; 
+        }
+
+        async function upgradeZone(zoneId, currentLevel, cost) {
+            if (myUser.coins < cost) return;
+            const updates = {};
+            updates[`UsersF/${myUser.uid}/coins`] = myUser.coins - cost;
+            updates[`ZonesF/${zoneId}/level`] = currentLevel + 1;
+            await update(ref(db), updates);
+        }
+
+        // --- UI Updates ---
+        function updateHUD() {
+            document.getElementById('coins-display').innerText = `💰 ${myUser.coins}`;
+            document.getElementById('zone-count-display').innerText = `🚩 ${myUser.zonesCount || 0} territoires`;
+            checkCurrentZoneContext(); 
+        }
+    
+        function selectZone(zoneId) {
+            selectedZoneId = zoneId; 
+            const zone = allZones[zoneId];
+            const actionsDiv = document.getElementById('zone-actions');
+            const statusDiv = document.getElementById('zone-status');
+            const coordsDiv = document.getElementById('zone-coords');
+            
+            coordsDiv.innerText = `ID: ${zoneId}`;
+            actionsDiv.innerHTML = ''; 
+            actionsDiv.classList.add('hidden');
+
+            // Cas 1 : Zone Libre
+            if (!zone) {
+                statusDiv.innerText = "Zone Libre";
+                statusDiv.style.color = "white";
+                let info = document.createElement('div');
+                info.style.fontSize = "0.8rem";
+                info.style.color = "#aaa";
+                info.innerText = "Déplacez-vous ici pour capturer";
+                actionsDiv.appendChild(info);
+                actionsDiv.classList.remove('hidden');
+            } 
+            
+            // Cas 2 : Zone de TA faction
+            else if (zone.faction === myUser.faction) {
+                statusDiv.innerText = `Zone ${FACTION_NAMES[zone.faction]} (Niv ${zone.level || 1})`;
+                statusDiv.style.color = FACTION_COLORS[zone.faction];
+                actionsDiv.classList.remove('hidden');
+
+                // Droit d'amélioration
+                if (zone.owners && zone.owners[myUser.uid]) {
+                    let upgradeCost = getUpgradeCost(zone.level || 1);
+                    if (upgradeCost) {
+                        let btnUp = document.createElement('button');
+                        btnUp.className = 'btn-upgrade';
+                        btnUp.innerText = `Améliorer (${upgradeCost}💰)`;
+                        btnUp.disabled = myUser.coins < upgradeCost;
+                        btnUp.onclick = (e) => {
+                            e.stopPropagation();
+                            upgradeZone(zoneId, zone.level || 1, upgradeCost);
+                        };
+                        actionsDiv.appendChild(btnUp);
+                    } else {
+                        let info = document.createElement('div');
+                        info.style.color = "#aaa";
+                        info.innerText = "Niveau Max Atteint";
+                        actionsDiv.appendChild(info);
+                    }
+                } else {
+                    let info = document.createElement('div');
+                    info.style.fontSize = "0.8rem";
+                    info.style.color = "#aaa";
+                    info.innerText = "Capturée par d'autres alliés. Vous ne pouvez pas l'améliorer.";
+                    actionsDiv.appendChild(info);
+                }
+            } 
+            
+            // Cas 3 : Zone Ennemie
+            else {
+                statusDiv.innerText = `Zone Ennemie - ${FACTION_NAMES[zone.faction]} (Niv ${zone.level || 1})`;
+                statusDiv.style.color = FACTION_COLORS[zone.faction];
+            }
+        }
+
+        function updateLeaderboard() {
+            const sortedUsers = Object.values(allUsers).sort((a, b) => (b.zonesCount || 0) - (a.zonesCount || 0));
+            const top3 = sortedUsers.slice(0, 3);
+            
+            const lbDiv = document.getElementById('lb-content');
+            lbDiv.innerHTML = '';
+            
+            top3.forEach((u, index) => {
+                let div = document.createElement('div');
+                div.className = 'lb-entry';
+                let medal = index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉';
+                let fColor = FACTION_COLORS[u.faction] || '#fff';
+                div.innerHTML = `<span>${medal} <span class="lb-color" style="background:${fColor}"></span>${u.username}</span> <span>${u.zonesCount || 0}🚩</span>`;
+                lbDiv.appendChild(div);
+            });
+        }
+
+        document.getElementById('debug-btn').addEventListener('click', () => {
+            console.log("🛠️ Mode Debug : Réinitialisation complète...");
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            startGPS();
+
+            if (playerPos && map) {
+                map.setView([playerPos.lat, playerPos.lng], 17, {
+                    animate: true,
+                    duration: 1 
+                });
+            }
+
+            Object.values(zoneRectangles).forEach(rect => map.removeLayer(rect));
+            zoneRectangles = {};
+            renderZonesMap();
+
+            const btn = document.getElementById('debug-btn');
+            btn.innerText = "🎯";
+            setTimeout(() => { btn.innerText = "​👾"; }, 1500);
+        });
+
+        function updateZoneColors() {
+            if(Object.keys(zoneRectangles).length > 0) renderZonesMap();
+        }
+    </script>
+    
+    <button id="debug-btn" title="Debug / Refresh">​👾</button>
+
+</body>
+</html>
